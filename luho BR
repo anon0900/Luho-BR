@@ -1,0 +1,168 @@
+import discord
+import asyncio
+import os
+from discord.ext import commands
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+import pwinput  # token mascarado com *
+
+console = Console()
+
+# ================= ESTRUTURA FIXA =================
+
+ESTRUTURA = {
+    "📌・INFORMAÇÕES": [("👋", "boas-vindas"), ("📜", "regras"), ("📢", "anuncios"), ("🎭", "cargos"), ("🔔", "avisos")],
+    "💬・CONVÍVIO": [("💬", "chat-geral"), ("😂", "memes"), ("📸", "midia"), ("💤", "off-topic"), ("💎", "vip-chat")],
+    "🏆・INTERAÇÃO": [("🔥", "eventos"), ("🆙", "niveis"), ("📊", "feedback"), ("🤝", "parcerias"), ("🖼️", "galeria")],
+    "🛠️・SUPORTE": [("🛠️", "suporte"), ("💡", "sugestoes"), ("❓", "faq"), ("📞", "contato"), ("🚫", "denuncias")],
+    "🤖・SISTEMA": [("🤖", "comandos"), ("🔗", "links-uteis"), ("📝", "logs"), ("👔", "staff-chat"), ("💰", "promocoes")],
+    "🔊・CANAIS DE VOZ": [("🔊", "Geral"), ("🎙", "Bate-Papo"), ("🎮", "Gaming"), ("🎧", "Musica"), ("🎥", "Live-Stream")]
+}
+
+# ================= TEMPLATES =================
+
+BASE_TEMPLATES = [
+    {"nome": "Gamer", "icon": "🎮", "del": ("『", "』")},
+    {"nome": "Loja", "icon": "🛒", "del": ("【", "】")},
+    {"nome": "Live", "icon": "📺", "del": ("「", "」")},
+    {"nome": "Comunidade", "icon": "🌐", "del": ("〘", "〙")},
+    {"nome": "Dev", "icon": "💻", "del": ("〈", "〉")},
+]
+
+# ================= BOT =================
+
+class LuhoSystem(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.all()
+        super().__init__(command_prefix="!", intents=intents)
+        self.page = 0
+        self.templates = self._generate_templates()
+
+    def _generate_templates(self):
+        temps = {}
+        for i in range(1, 46):
+            base = BASE_TEMPLATES[(i - 1) % len(BASE_TEMPLATES)]
+            temps[str(i)] = {
+                "nome": f"{base['nome']} #{i}",
+                "icone": base["icon"],
+                "del": base["del"]
+            }
+        return temps
+
+    async def on_ready(self):
+        os.system("cls" if os.name == "nt" else "clear")
+        console.print(Panel(f"LUHO BR ONLINE • {self.user}", style="bold green"))
+
+        guilds = list(self.guilds)
+        if not guilds:
+            console.print("[bold red]O bot não está em nenhum servidor[/bold red]")
+            return
+
+        table = Table(title="Servidores")
+        table.add_column("Nº", style="magenta")
+        table.add_column("Nome", style="cyan")
+
+        for i, g in enumerate(guilds):
+            table.add_row(str(i + 1), g.name)
+
+        console.print(table)
+
+        while True:
+            try:
+                choice = int(console.input("\nSelecione o servidor: ")) - 1
+                if 0 <= choice < len(guilds):
+                    break
+            except ValueError:
+                pass
+            console.print("[red]Seleção inválida[/red]")
+
+        guild = guilds[choice]
+
+        while True:
+            self.show_menu()
+            op = console.input("\n[N] Próxima | [B] Voltar | [Número] Criar > ").lower()
+
+            if op == "n" and self.page < 4:
+                self.page += 1
+            elif op == "b" and self.page > 0:
+                self.page -= 1
+            elif op.isdigit() and op in self.templates:
+                confirm = console.input(f"[red]Resetar {guild.name}? (s/n): [/red]").lower()
+                if confirm == "s":
+                    await self.build_server(guild, op)
+                    break
+
+    def show_menu(self):
+        os.system("cls" if os.name == "nt" else "clear")
+        console.print(Panel("LUHO BR • TEMPLATES", subtitle=f"Página {self.page + 1}/5"))
+
+        table = Table(expand=True)
+        for _ in range(3):
+            table.add_column("Template", justify="center")
+
+        start = self.page * 9 + 1
+        items = []
+
+        for i in range(start, start + 9):
+            if str(i) in self.templates:
+                t = self.templates[str(i)]
+                items.append(f"[cyan]{i}[/cyan] {t['nome']} {t['icone']}")
+
+        while len(items) < 9:
+            items.append("")
+
+        for i in range(0, 9, 3):
+            table.add_row(items[i], items[i + 1], items[i + 2])
+
+        console.print(table)
+
+    async def build_server(self, guild, tid):
+        temp = self.templates[tid]
+        d1, d2 = temp["del"]
+
+        console.print("[red]Apagando canais...[/red]")
+        for c in guild.channels:
+            try:
+                await c.delete()
+                await asyncio.sleep(0.2)
+            except:
+                pass
+
+        for cat, canais in ESTRUTURA.items():
+            nome_cat = f"{d1} {cat} {d2}"
+            category = await guild.create_category(nome_cat)
+            console.print(f"[yellow]📁 {nome_cat}[/yellow]")
+            await asyncio.sleep(0.4)
+
+            for emoji, nome in canais:
+                final = f"{d1} {emoji} ・ {nome.replace(' ', '・')} {d2}"
+                if "VOZ" in cat:
+                    await guild.create_voice_channel(final, category=category)
+                    console.print(f"[blue]🔊 {final}[/blue]")
+                else:
+                    await guild.create_text_channel(final, category=category)
+                    console.print(f"[green]✔ {final}[/green]")
+                await asyncio.sleep(0.3)
+
+        console.print(Panel("SERVIDOR CRIADO COM SUCESSO", style="bold green"))
+        await self.close()
+
+# ================= START =================
+
+if __name__ == "__main__":
+    os.system("cls" if os.name == "nt" else "clear")
+
+    token = pwinput.pwinput(
+        prompt="Digite o TOKEN do bot: ",
+        mask="*"
+    )
+
+    bot = LuhoSystem()
+
+    try:
+        bot.run(token)
+    except Exception as e:
+        console.print(f"[red]Erro: {e}[/red]")
+        input("Enter para sair...")
